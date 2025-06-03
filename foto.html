@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitura da Mão</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            margin-bottom: 30px;
+        }
+        #video, #photo {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: block;
+        }
+        #canvas {
+            display: none;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 8px;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .hidden {
+            display: none;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <h1>Leitura da Mão</h1>
+    <p>Posicione sua mão aberta na frente da câmera e tire uma foto clara.</p>
+    
+    <video id="video" class="hidden" autoplay playsinline></video>
+    <img id="photo" class="hidden" alt="Foto da mão">
+    <canvas id="canvas" class="hidden"></canvas>
+    
+    <div>
+        <button id="startButton">Iniciar Câmera</button>
+        <button id="captureButton" class="hidden">Tirar Foto</button>
+        <button id="retakeButton" class="hidden">Tirar Outra</button>
+        <button id="submitButton" class="hidden">Enviar Foto</button>
+    </div>
+    
+    <div id="status" class="hidden status"></div>
+    
+    <script>
+        // Elementos do DOM
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const photo = document.getElementById('photo');
+        const startButton = document.getElementById('startButton');
+        const captureButton = document.getElementById('captureButton');
+        const retakeButton = document.getElementById('retakeButton');
+        const submitButton = document.getElementById('submitButton');
+        const statusDiv = document.getElementById('status');
+        
+        // Obter parâmetros da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const leadId = urlParams.get('id') || '';
+        const leadName = urlParams.get('nome') || '';
+        const redirectUrl = urlParams.get('redirect') || '';
+        
+        // Iniciar câmera
+        startButton.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                startButton.classList.add('hidden');
+                captureButton.classList.remove('hidden');
+                statusDiv.classList.add('hidden');
+            } catch (err) {
+                showStatus(`Erro ao acessar câmera: ${err.message}. Por favor, permita o acesso à câmera.`, 'error');
+            }
+        });
+        
+        // Capturar foto
+        captureButton.addEventListener('click', () => {
+            // Configurar canvas com dimensões do vídeo
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Desenhar frame atual do vídeo no canvas
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Converter canvas para URL de dados
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            
+            // Exibir a foto capturada
+            photo.src = dataUrl;
+            photo.classList.remove('hidden');
+            video.classList.add('hidden');
+            
+            // Atualizar botões
+            captureButton.classList.add('hidden');
+            retakeButton.classList.remove('hidden');
+            submitButton.classList.remove('hidden');
+            
+            // Parar stream de vídeo
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        });
+        
+        // Tirar outra foto
+        retakeButton.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                photo.classList.add('hidden');
+                captureButton.classList.remove('hidden');
+                retakeButton.classList.add('hidden');
+                submitButton.classList.add('hidden');
+                statusDiv.classList.add('hidden');
+            } catch (err) {
+                showStatus(`Erro ao acessar câmera: ${err.message}`, 'error');
+            }
+        });
+        
+        // Enviar foto
+        submitButton.addEventListener('click', async () => {
+            statusDiv.innerHTML = "Enviando foto...";
+            statusDiv.className = "status";
+            statusDiv.classList.remove('hidden');
+            submitButton.disabled = true;
+            
+            try {
+                // Criar um formulário para envio
+                const formData = new FormData();
+                
+                // Converter a imagem base64 para blob
+                const response = await fetch(photo.src);
+                const blob = await response.blob();
+                
+                // Adicionar a imagem e dados do lead ao formulário
+                formData.append('lead_id', leadId);
+                formData.append('lead_name', leadName);
+                formData.append('image', blob, 'hand_photo.jpg');
+                formData.append('_subject', 'Nova foto da mão enviada pelo quiz');
+                
+                // Enviar usando FormSubmit (substitua seu-email@exemplo.com pelo seu email real)
+                const submitResponse = await fetch('https://formsubmit.co/amandacomunidadeecom@gmail.com', {
+                    method: 'POST',
+                    body: formData
+                } );
+                
+                if (submitResponse.ok) {
+                    showStatus("Foto enviada com sucesso! Redirecionando...", 'success');
+                    
+                    // Redirecionar de volta para o quiz após 2 segundos
+                    setTimeout(() => {
+                        if (redirectUrl) {
+                            window.location.href = redirectUrl;
+                        } else {
+                            showStatus("Foto enviada com sucesso! Você pode fechar esta janela.", 'success');
+                        }
+                    }, 2000);
+                } else {
+                    throw new Error('Falha ao enviar o formulário');
+                }
+            } catch (err) {
+                console.error("Erro detalhado:", err);
+                showStatus(`Erro ao enviar foto: ${err.message}. Por favor, tente novamente.`, 'error');
+                submitButton.disabled = false;
+            }
+        });
+        
+        // Mostrar mensagem de status
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type ? `status ${type}` : 'status';
+            statusDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
