@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captura de Foto da Mão</title>
+    <title>Leitura da Mão</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,76 +11,97 @@
             margin: 0 auto;
             padding: 20px;
             text-align: center;
+            background-color: #f5f5f5;
         }
-        #video, #canvas, #photo {
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            margin-bottom: 30px;
+        }
+        #video, #photo {
             width: 100%;
             max-width: 400px;
-            margin-bottom: 10px;
+            margin: 0 auto 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: block;
         }
         #canvas {
             display: none;
         }
         button {
-            padding: 10px 20px;
+            padding: 12px 24px;
             background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            margin: 5px;
+            margin: 10px;
             font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
         }
         .hidden {
             display: none;
         }
-        .instructions {
-            background-color: #f8f9fa;
-            padding: 15px;
+        #status {
+            margin: 20px 0;
+            padding: 10px;
             border-radius: 5px;
-            margin-bottom: 20px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
         }
     </style>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 </head>
 <body>
-    <div class="instructions">
-        <h2>Leitura da Mão</h2>
-        <p>Posicione sua mão aberta na frente da câmera e tire uma foto clara.</p>
-    </div>
+    <h1>Leitura da Mão</h1>
+    <p>Posicione sua mão aberta na frente da câmera e tire uma foto clara.</p>
     
-    <video id="video" autoplay playsinline></video>
+    <video id="video" class="hidden" autoplay playsinline></video>
+    <img id="photo" class="hidden" alt="Foto da mão">
     <canvas id="canvas"></canvas>
-    <img id="photo" class="hidden" alt="Foto da sua mão">
     
     <div>
-        <button id="startCamera">Iniciar Câmera</button>
-        <button id="capturePhoto" class="hidden">Tirar Foto</button>
-        <button id="retakePhoto" class="hidden">Nova Foto</button>
-        <button id="submitPhoto" class="hidden">Enviar Foto</button>
+        <button id="startButton">Iniciar Câmera</button>
+        <button id="captureButton" class="hidden">Tirar Foto</button>
+        <button id="retakeButton" class="hidden">Tirar Outra</button>
+        <button id="submitButton" class="hidden">Enviar Foto</button>
     </div>
     
-    <div id="status"></div>
+    <div id="status" class="hidden"></div>
     
     <script>
+        // Inicializar EmailJS
+        (function( ) {
+            emailjs.init("K2yTyL4QouOs9yxnn");
+        })();
+        
         // Elementos DOM
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const photo = document.getElementById('photo');
-        const startButton = document.getElementById('startCamera');
-        const captureButton = document.getElementById('capturePhoto');
-        const retakeButton = document.getElementById('retakePhoto');
-        const submitButton = document.getElementById('submitPhoto');
+        const startButton = document.getElementById('startButton');
+        const captureButton = document.getElementById('captureButton');
+        const retakeButton = document.getElementById('retakeButton');
+        const submitButton = document.getElementById('submitButton');
         const statusDiv = document.getElementById('status');
         
-        // Variáveis para armazenar dados do usuário
-        let leadId = '';
-        let leadName = '';
-        let redirectUrl = '';
-        
-        // Obter parâmetros da URL
+        // Parâmetros da URL
         const urlParams = new URLSearchParams(window.location.search);
-        leadId = urlParams.get('id') || '';
-        leadName = urlParams.get('nome') || '';
-        redirectUrl = urlParams.get('redirect') || '';
+        const leadId = urlParams.get('id') || 'sem_id';
+        const leadName = urlParams.get('nome') || 'Visitante';
+        const redirectUrl = urlParams.get('redirect') || '';
         
         // Iniciar câmera
         startButton.addEventListener('click', async () => {
@@ -93,10 +114,12 @@
                     } 
                 });
                 video.srcObject = stream;
+                video.classList.remove('hidden');
                 startButton.classList.add('hidden');
                 captureButton.classList.remove('hidden');
+                statusDiv.classList.add('hidden');
             } catch (err) {
-                statusDiv.innerHTML = `Erro ao acessar câmera: ${err.message}`;
+                showStatus(`Erro ao acessar câmera: ${err.message}. Por favor, permita o acesso à câmera.`, 'error');
             }
         });
         
@@ -107,11 +130,11 @@
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            photo.src = imageDataUrl;
-            photo.classList.remove('hidden');
-            video.classList.add('hidden');
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            photo.src = imageData;
             
+            video.classList.add('hidden');
+            photo.classList.remove('hidden');
             captureButton.classList.add('hidden');
             retakeButton.classList.remove('hidden');
             submitButton.classList.remove('hidden');
@@ -122,13 +145,8 @@
             }
         });
         
-        // Nova foto
+        // Tirar outra foto
         retakeButton.addEventListener('click', async () => {
-            photo.classList.add('hidden');
-            video.classList.remove('hidden');
-            retakeButton.classList.add('hidden');
-            submitButton.classList.add('hidden');
-            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
@@ -138,60 +156,65 @@
                     } 
                 });
                 video.srcObject = stream;
+                
+                photo.classList.add('hidden');
+                video.classList.remove('hidden');
+                retakeButton.classList.add('hidden');
+                submitButton.classList.add('hidden');
                 captureButton.classList.remove('hidden');
+                statusDiv.classList.add('hidden');
             } catch (err) {
-                statusDiv.innerHTML = `Erro ao acessar câmera: ${err.message}`;
-                startButton.classList.remove('hidden');
+                showStatus(`Erro ao acessar câmera: ${err.message}`, 'error');
             }
         });
         
         // Enviar foto
         submitButton.addEventListener('click', async () => {
-            statusDiv.innerHTML = "Enviando foto...";
             submitButton.disabled = true;
+            showStatus("Enviando foto...", '');
             
             try {
-                // Obter a imagem em formato base64 (remover o prefixo "data:image/jpeg;base64,")
-                const imageBase64 = photo.src.split(',')[1];
-                
-                // Enviar para o email usando EmailJS (serviço gratuito)
-                // Você precisará criar uma conta em https://www.emailjs.com/ (gratuito para até 200 emails/mês )
+                // Preparar dados para envio
                 const templateParams = {
-                    to_email: 'seu-email@exemplo.com', // SUBSTITUA PELO SEU EMAIL
-                    from_name: leadName || 'Usuário do Quiz',
-                    lead_id: leadId || 'ID não fornecido',
-                    message: 'Foto da mão enviada pelo quiz',
+                    from_name: leadName,
+                    lead_id: leadId,
                     image_data: photo.src
                 };
                 
-                // Substitua os IDs abaixo pelos seus IDs do EmailJS
-                emailjs.send('service_xta4eao', 'YOUR_TEMPLATE_ID', templateParams, 'YOUR_USER_ID')
-                    .then(function(response) {
-                        statusDiv.innerHTML = "Foto enviada com sucesso! Redirecionando...";
-                        
-                        // Redirecionar de volta para o quiz após 2 segundos
-                        setTimeout(() => {
-                            // URL de redirecionamento (deve ser configurada no quiz da Inlead)
-                            window.location.href = redirectUrl || 'https://seu-quiz-inlead.com/continuar';
-                        }, 2000 );
-                    }, function(error) {
-                        statusDiv.innerHTML = `Erro ao enviar foto: ${error}`;
-                        submitButton.disabled = false;
-                    });
+                // Enviar email com a foto
+                const response = await emailjs.send(
+                    'service_xta4eao', 
+                    'template_qemtxug', 
+                    templateParams
+                );
+                
+                if (response.status === 200) {
+                    showStatus("Foto enviada com sucesso! Redirecionando...", 'success');
+                    
+                    // Redirecionar de volta para o quiz após 2 segundos
+                    setTimeout(() => {
+                        if (redirectUrl) {
+                            window.location.href = redirectUrl;
+                        } else {
+                            showStatus("Foto enviada com sucesso! Você pode fechar esta janela.", 'success');
+                        }
+                    }, 2000);
+                } else {
+                    throw new Error('Falha ao enviar o email');
+                }
             } catch (err) {
-                statusDiv.innerHTML = `Erro ao enviar foto: ${err.message}`;
+                console.error("Erro detalhado:", err);
+                showStatus(`Erro ao enviar foto: ${err.message}. Por favor, tente novamente.`, 'error');
                 submitButton.disabled = false;
             }
         });
-    </script>
-    
-    <!-- Adicione o script do EmailJS -->
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    <script>
-        (function( ) {
-            // https://dashboard.emailjs.com/admin/account
-            emailjs.init('YOUR_USER_ID' ); // SUBSTITUA PELO SEU USER ID DO EMAILJS
-        })();
+        
+        // Mostrar mensagem de status
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type ? `${type}` : '';
+            statusDiv.classList.remove('hidden');
+        }
     </script>
 </body>
 </html>
